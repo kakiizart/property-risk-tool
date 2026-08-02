@@ -1,0 +1,70 @@
+# Property Risk & Hazard Exposure Tool
+
+A full-stack web app that takes a US property address and returns a transparent,
+source-traceable multi-peril risk profile — built on authoritative FEMA data and
+rendered on an interactive map.
+
+> **Scope note:** This is a **geospatial property risk / hazard-exposure tool**,
+> not a catastrophe model. It orchestrates authoritative federal data (FEMA
+> National Risk Index + National Flood Hazard Layer) through a documented scoring
+> function. Every number in the output is traceable to a source.
+
+## Stack
+
+| Layer | Tech |
+|-------|------|
+| Frontend | Next.js (App Router, TypeScript), Tailwind, Leaflet |
+| Backend | Python, FastAPI |
+| Database | PostgreSQL + PostGIS (Supabase) |
+| Data | FEMA NRI, FEMA NFHL, US Census Geocoder (all free, no API key) |
+| Hosting | Vercel (web) · Railway/Fly (api) · Supabase (db) |
+
+## Repository layout
+
+```
+api/    FastAPI backend (health checks now; risk pipeline in Sprints 1-4)
+web/    Next.js frontend
+db/     SQL migrations (PostGIS + tables + RLS)
+docs/   architecture, database, methodology, deployment, runbook
+```
+
+## Quick start
+
+### Backend
+```bash
+cd api
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+uvicorn app.main:app --reload
+# -> http://localhost:8000/health
+```
+
+### Frontend
+```bash
+cd web
+npm install
+cp .env.example .env.local     # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm run dev
+# -> http://localhost:3000
+```
+
+### Verify
+```bash
+cd api && ruff check . && pytest -q          # lint + tests
+cd web && npm run typecheck && npm run build # typecheck + build
+```
+
+## Project status
+
+| Sprint | Scope | Status |
+|--------|-------|--------|
+| 0 | Foundation: scaffold, health checks, migration, CI, docs | ✅ done |
+| 1 | Geocode slice (address → coordinates + census tract) | ⬜ |
+| 2 | Flood-zone slice (NFHL point lookup + map polygon) | ⬜ |
+| 3 | NRI ingestion + multi-peril scores | ⬜ |
+| 4 | Composite scoring + result report | ⬜ |
+| 5 | Auth + saved reports (Supabase Auth + RLS) | ⬜ |
+| 6 | Harden + deploy | ⬜ |
+
+See `docs/` for architecture, the scoring methodology, and the runbook.
