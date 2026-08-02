@@ -26,6 +26,7 @@ import {
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
+import type { FeatureCollection, Geometry } from "geojson";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet's bundled icon paths break with most bundlers; point to the CDN copy.
@@ -73,16 +74,18 @@ export default function MapContent({
 }: Props) {
   const tierStyle = floodTier ? (TIER_STYLES[floodTier] ?? TIER_STYLES.Low) : null;
 
-  // Build a FeatureCollection so react-leaflet's GeoJSON layer accepts it
-  const geoJsonData =
+  // Build a FeatureCollection so react-leaflet's GeoJSON layer accepts it.
+  // floodGeometry is only ever passed in non-empty (RiskMap guards on it), so
+  // narrowing the untyped `object` to a GeoJSON Geometry here is safe.
+  const geoJsonData: FeatureCollection | null =
     floodGeometry && tierStyle
       ? {
-          type: "FeatureCollection" as const,
+          type: "FeatureCollection",
           features: [
             {
-              type: "Feature" as const,
+              type: "Feature",
               properties: { zone: floodZoneCode },
-              geometry: floodGeometry,
+              geometry: floodGeometry as Geometry,
             },
           ],
         }
@@ -104,8 +107,7 @@ export default function MapContent({
       {geoJsonData && tierStyle && (
         <GeoJSON
           key={`${lat},${lon}`}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data={geoJsonData as any}
+          data={geoJsonData}
           style={{
             color: tierStyle.color,
             fillColor: tierStyle.fillColor,

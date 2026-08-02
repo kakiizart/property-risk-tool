@@ -22,7 +22,7 @@ rendered on an interactive map.
 ## Repository layout
 
 ```
-api/    FastAPI backend (health checks now; risk pipeline in Sprints 1-4)
+api/    FastAPI backend (health + geocode + flood + NRI endpoints)
 web/    Next.js frontend
 db/     SQL migrations (PostGIS + tables + RLS)
 docs/   architecture, database, methodology, deployment, runbook
@@ -60,9 +60,9 @@ cd web && npm run typecheck && npm run build # typecheck + build
 | Sprint | Scope | Status |
 |--------|-------|--------|
 | 0 | Foundation: scaffold, health checks, migration, CI, docs | ✅ done |
-| 1 | Geocode slice (address → coordinates + census tract) | ⬜ |
-| 2 | Flood-zone slice (NFHL point lookup + map polygon) | ⬜ |
-| 3 | NRI ingestion + multi-peril scores | ⬜ |
+| 1 | Geocode slice (address → coordinates + census tract) | ✅ done |
+| 2 | Flood-zone slice (NFHL point lookup + map polygon) | ✅ done |
+| 3 | NRI ingestion + multi-peril scores | ✅ done |
 | 4 | Composite scoring + result report | ⬜ |
 | 5 | Auth + saved reports (Supabase Auth + RLS) | ⬜ |
 | 6 | Harden + deploy | ⬜ |
