@@ -1,0 +1,13 @@
+{
+  "_comment": "Hand-verified flood tiers for pipeline validation (see docs/methodology.md). Tiers reflect FEMA NFHL data confirmed via the live pipeline. The offline test asserts each recorded zone classifies to the recorded tier; the opt-in integration test (RUN_GOLDEN=1) geocodes each address live and asserts the pipeline reproduces the tier. 'zone_observed' is the FEMA zone seen at verification time and is reference/consistency data — assertions key on the tier, which is stable across minor FEMA remapping.",
+  "addresses": [
+    {"address": "1600 Pennsylvania Ave NW, Washington, DC", "expected_flood_tier": "Low", "zone_observed": "X", "note": "Inland urban, outside the floodplain"},
+    {"address": "100 State St, Erie, PA 16507", "expected_flood_tier": "Low", "zone_observed": "X", "note": "Erie lakefront downtown, minimal hazard"},
+    {"address": "500 Canal St, New Orleans, LA 70130", "expected_flood_tier": "Low", "zone_observed": "X", "note": "Downtown NOLA, levee-protected Zone X"},
+    {"address": "1315 10th St, Sacramento, CA 95814", "expected_flood_tier": "Low", "zone_observed": "X", "note": "Downtown Sacramento"},
+    {"address": "1 Lincoln Rd, Miami Beach, FL 33139", "expected_flood_tier": "High", "zone_observed": "AE", "note": "Coastal Special Flood Hazard Area"},
+    {"address": "200 Beach Dr NE, St Petersburg, FL 33701", "expected_flood_tier": "High", "zone_observed": "AE", "note": "Coastal Special Flood Hazard Area"},
+    {"address": "2100 Coastal Hwy, Dewey Beach, DE 19971", "expected_flood_tier": "High", "zone_observed": "AO", "note": "Coastal SFHA (shallow sheet-flow zone)"},
+    {"address": "300 Alakawa St, Honolulu, HI 96817", "expected_flood_tier": "High", "zone_observed": "AE", "note": "Coastal Special Flood Hazard Area"}
+  ]
+}

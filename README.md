@@ -22,7 +22,7 @@ rendered on an interactive map.
 ## Repository layout
 
 ```
-api/    FastAPI backend (health + geocode + flood + NRI endpoints)
+api/    FastAPI backend (health + geocode + flood + NRI + report endpoints)
 web/    Next.js frontend
 db/     SQL migrations (PostGIS + tables + RLS)
 docs/   architecture, database, methodology, deployment, runbook
@@ -63,7 +63,7 @@ cd web && npm run typecheck && npm run build # typecheck + build
 | 1 | Geocode slice (address → coordinates + census tract) | ✅ done |
 | 2 | Flood-zone slice (NFHL point lookup + map polygon) | ✅ done |
 | 3 | NRI ingestion + multi-peril scores | ✅ done |
-| 4 | Composite scoring + result report | ⬜ |
+| 4 | Composite scoring + result report (`POST /report`) | ✅ done |
 | 5 | Auth + saved reports (Supabase Auth + RLS) | ⬜ |
 | 6 | Harden + deploy | ⬜ |
 

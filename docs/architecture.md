@@ -11,7 +11,10 @@
   tract geometry for the choropleth), a lookup cache, and user-owned saved
   reports protected by row-level security.
 
-## Data flow (target)
+## Data flow
+
+Assembled server-side by `POST /report` (geocode → flood + NRI in parallel →
+composite scoring); flood and NRI degrade to null independently if unavailable.
 
 ```
 address string
