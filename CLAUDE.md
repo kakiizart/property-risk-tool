@@ -34,9 +34,11 @@ cd web && npm run typecheck && npm run build
 ```
 
 ## Current state
-Sprint 0 complete: health/readiness endpoints (verified live), initial migration
-(PostGIS + nri_tract + lookup_cache + saved_report with RLS), CI, docs.
-Next: Sprint 1 geocode slice.
+Sprints 0-3 complete: health/readiness, geocode (US Census), flood zone (FEMA
+NFHL), and NRI multi-peril scores (FEMA NRI loaded to Postgres), plus the initial
+migration (PostGIS + nri_tract + lookup_cache + saved_report with RLS), CI, docs.
+Verified: 54 backend tests pass (ruff clean); web typechecks, lints, and builds
+clean. Next: Sprint 4 composite scoring + result report.
 
 ## Do not
 - Provision cloud infra, push, deploy, or run destructive DB ops without explicit
