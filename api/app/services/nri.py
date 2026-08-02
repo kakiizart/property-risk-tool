@@ -27,6 +27,7 @@ most relevant for the target region:
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 
@@ -102,7 +103,13 @@ async def get_nri_scores(tract_geoid: str) -> NriResult:
             "The ETL may not have loaded this tract, or the GEOID may be incorrect."
         )
 
-    peril_scores_json: dict = row["peril_scores"] or {}
+    # asyncpg returns jsonb as a raw JSON string unless a codec is registered
+    # (see app.db._init_connection). Parse defensively so the service works
+    # regardless of how the pool was created.
+    raw_peril_scores = row["peril_scores"]
+    if isinstance(raw_peril_scores, str):
+        raw_peril_scores = json.loads(raw_peril_scores)
+    peril_scores_json: dict = raw_peril_scores or {}
     perils = _build_peril_list(peril_scores_json)
 
     return NriResult(

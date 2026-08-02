@@ -7,6 +7,7 @@ _build_peril_list) are tested directly.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -127,6 +128,23 @@ class TestNriEndpoint:
         with p1, p2:
             body = client.get("/nri", params={"tract_geoid": "11001006202"}).json()
         assert "FEMA" in body["source"]
+
+    def test_peril_scores_as_json_string_is_parsed(self) -> None:
+        # Regression: asyncpg returns jsonb as a raw JSON string when no type
+        # codec is registered on the connection. The service must handle that
+        # shape, not only a pre-parsed dict — this reproduces the real DB read
+        # path that a dict-only mock silently missed.
+        row = dict(_FAKE_ROW)
+        row["peril_scores"] = json.dumps(_FAKE_ROW["peril_scores"])
+        p1, p2 = _mock_db_with_row(row)
+        with p1, p2:
+            resp = client.get("/nri", params={"tract_geoid": "11001006202"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["perils"]) == 9
+        hail = next(p for p in body["perils"] if p["code"] == "HAIL")
+        assert hail["score"] == pytest.approx(67.8, abs=0.01)
 
 
 # ---------------------------------------------------------------------------

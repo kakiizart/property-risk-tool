@@ -17,6 +17,7 @@ Usage in request handlers:
 
 from __future__ import annotations
 
+import json
 import logging
 
 import asyncpg
@@ -24,6 +25,23 @@ import asyncpg
 logger = logging.getLogger(__name__)
 
 _pool: asyncpg.Pool | None = None
+
+
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """Per-connection setup: decode Postgres json/jsonb as Python objects.
+
+    asyncpg returns json/jsonb columns as raw JSON strings unless a codec is
+    registered, which would force every caller to json.loads the value itself.
+    Registering the codec here means rows come back with dict/list values
+    everywhere (and dicts are encoded back to JSON on write).
+    """
+    for typename in ("json", "jsonb"):
+        await conn.set_type_codec(
+            typename,
+            encoder=json.dumps,
+            decoder=json.loads,
+            schema="pg_catalog",
+        )
 
 
 async def init_pool(database_url: str) -> None:
@@ -34,6 +52,7 @@ async def init_pool(database_url: str) -> None:
         min_size=1,
         max_size=10,
         command_timeout=10,
+        init=_init_connection,
     )
     logger.info("Database pool ready")
 
