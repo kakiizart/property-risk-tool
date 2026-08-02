@@ -40,6 +40,15 @@ logger = logging.getLogger(__name__)
 # NFHL MapServer layer 28 = S_FLD_HAZ_AR (Flood Hazard Areas)
 _LAYER_ID = 28
 
+# Geometry simplification. Flood-zone polygons — especially large Zone X areas —
+# can be tens of MB of vertices, which bloats the response and stalls Leaflet on
+# the client. Ask the ArcGIS server to simplify + round the geometry before it is
+# returned. maxAllowableOffset is in outSR units (degrees for EPSG:4326):
+# ~0.0003° ≈ 30 m, ample fidelity at street-level zoom. geometryPrecision caps
+# coordinate decimal places. Together these cut the payload by ~100x.
+_MAX_ALLOWABLE_OFFSET = 0.0003
+_GEOMETRY_PRECISION = 5
+
 # SFHA zone prefixes — treated as High tier
 _SFHA_PREFIXES = ("A", "V")
 
@@ -76,6 +85,8 @@ async def get_flood_zone(lat: float, lon: float) -> FloodZoneResult:
         "spatialRel": "esriSpatialRelIntersects",
         "outFields": "FLD_ZONE,ZONE_SUBTY,SFHA_TF",
         "returnGeometry": "true",
+        "maxAllowableOffset": _MAX_ALLOWABLE_OFFSET,
+        "geometryPrecision": _GEOMETRY_PRECISION,
         "outSR": "4326",
         "f": "geojson",
     }

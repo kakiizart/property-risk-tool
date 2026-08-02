@@ -7,6 +7,9 @@ __pycache__/
 .mypy_cache/
 .venv/
 
+# ETL data downloads (FEMA NRI CSV/ZIP — large, fetched at runtime)
+api/scripts/data/
+
 # Node / Next
 node_modules/
 .next/
