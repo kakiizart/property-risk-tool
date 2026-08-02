@@ -65,6 +65,7 @@ class TestReportSuccess:
         body = resp.json()
         assert body["geocode"]["tract_geoid"] == "42049000300"
         assert body["flood"]["flood_tier"] == "Low"
+        assert body["nri"]["tract_geoid"] == "42049000300"
         assert body["nri"]["composite_score"] == 41.7
         assert body["composite"] is not None
 

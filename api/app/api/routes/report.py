@@ -57,6 +57,7 @@ class PerilPart(BaseModel):
 
 
 class NriPart(BaseModel):
+    tract_geoid: str
     composite_score: float | None
     eal_total_usd: float | None
     perils: list[PerilPart]
@@ -137,6 +138,7 @@ async def report(body: ReportRequest) -> ReportResponse:
     nri = None
     if result.nri is not None:
         nri = NriPart(
+            tract_geoid=result.nri.tract_geoid,
             composite_score=result.nri.composite_score,
             eal_total_usd=result.nri.eal_total_usd,
             perils=[
