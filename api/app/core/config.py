@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     # Populated per-environment; empty in Sprint 0 until the Supabase project exists.
     database_url: str = Field(default="")
 
+    # --- Auth (Supabase Auth / JWT verification) ---
+    # HS256 secret from Supabase: Project Settings > API > JWT Settings > "JWT Secret".
+    # Empty until the project exists; auth-protected endpoints return 503 when unset.
+    supabase_jwt_secret: str = Field(default="")
+    # Expected `aud` claim on Supabase access tokens (default for signed-in users).
+    supabase_jwt_audience: str = Field(default="authenticated")
+
     # --- External data services (no keys required, kept configurable) ---
     census_geocoder_url: str = Field(
         default="https://geocoding.geo.census.gov/geocoder"
@@ -78,6 +85,11 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @property
+    def auth_configured(self) -> bool:
+        """True if Supabase JWT verification is configured (secret present)."""
+        return bool(self.supabase_jwt_secret)
 
 
 @lru_cache

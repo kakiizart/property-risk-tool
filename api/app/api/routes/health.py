@@ -43,6 +43,8 @@ def ready() -> ReadyResponse:
         # In production the database must be configured; in dev it may be blank
         # during early sprints, so we only require it when running in production.
         "database_configured": bool(settings.database_url) or not settings.is_production,
+        # Auth (Supabase JWT) is likewise required in production but optional in dev.
+        "auth_configured": settings.auth_configured or not settings.is_production,
         "geocoder_configured": bool(settings.census_geocoder_url),
         "nfhl_configured": bool(settings.nfhl_mapserver_url),
     }

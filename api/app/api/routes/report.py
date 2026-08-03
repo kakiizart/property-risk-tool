@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.services.geocoder import GeocoderError, NoMatchError
-from app.services.report import build_report
+from app.services.report import ReportResult, build_report
 
 router = APIRouter(prefix="/report", tags=["report"])
 
@@ -101,30 +101,13 @@ class ReportResponse(BaseModel):
     )
 
 
-@router.post(
-    "",
-    response_model=ReportResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Full risk report for a US address",
-)
-async def report(body: ReportRequest) -> ReportResponse:
-    """
-    Return the complete, source-traceable risk report for a US address.
+def build_report_response(address: str, result: ReportResult) -> ReportResponse:
+    """Map an assembled :class:`ReportResult` to the API response shape.
 
-    Runs geocode -> (flood + NRI) -> composite scoring. Flood and NRI sections
-    degrade to null if their upstream is unavailable; the composite is included
-    only when NRI data exists. Every number carries its source and, for the
-    composite, its per-peril weight and contribution.
+    Shared by ``POST /report`` and ``POST /reports`` (saved reports), so a saved
+    snapshot is exactly the same shape as a live report — no drift between what
+    the user sees and what gets persisted.
     """
-    try:
-        result = await build_report(body.address)
-    except NoMatchError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except GeocoderError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
-        ) from exc
-
     geo = result.geocode
     flood = None
     if result.flood is not None:
@@ -174,7 +157,7 @@ async def report(body: ReportRequest) -> ReportResponse:
         )
 
     return ReportResponse(
-        address=body.address,
+        address=address,
         geocode=GeocodePart(
             lat=geo.lat, lon=geo.lon, tract_geoid=geo.tract_geoid,
             matched_address=geo.matched_address,
@@ -183,3 +166,30 @@ async def report(body: ReportRequest) -> ReportResponse:
         nri=nri,
         composite=composite,
     )
+
+
+@router.post(
+    "",
+    response_model=ReportResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Full risk report for a US address",
+)
+async def report(body: ReportRequest) -> ReportResponse:
+    """
+    Return the complete, source-traceable risk report for a US address.
+
+    Runs geocode -> (flood + NRI) -> composite scoring. Flood and NRI sections
+    degrade to null if their upstream is unavailable; the composite is included
+    only when NRI data exists. Every number carries its source and, for the
+    composite, its per-peril weight and contribution.
+    """
+    try:
+        result = await build_report(body.address)
+    except NoMatchError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except GeocoderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    return build_report_response(body.address, result)

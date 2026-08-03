@@ -35,6 +35,26 @@ FEMA NFHL REST                        PostGIS: nri_tract (lookup by GEOID)
           FastAPI JSON → Next.js → Leaflet map + result panel
 ```
 
+## Saved reports & auth (Sprint 5)
+
+The public risk lookup needs no account. Signed-in users can additionally save
+report snapshots, isolated per user:
+
+```
+Browser (Supabase Auth: email+password) ──► access token (JWT)
+   │  Authorization: Bearer <token>
+   ▼
+POST /reports ─ verify JWT (app.services.auth) ─► re-run pipeline ─► store snapshot
+GET/DELETE /reports[/id] ─ verify JWT ─► RLS-scoped query (own rows only)
+```
+
+- The API verifies the Supabase JWT, then runs saved-report queries as the
+  `authenticated` role with the request's JWT claims set, so the `saved_report`
+  RLS policies enforce isolation **in the database** (see `docs/security.md`).
+- `POST /reports` re-runs the pipeline server-side and persists the same shape a
+  live `POST /report` returns (shared mapping) — the stored snapshot is
+  server-computed, not client-supplied.
+
 ## External services
 
 | Service | Use | Auth | Notes |
@@ -42,6 +62,7 @@ FEMA NFHL REST                        PostGIS: nri_tract (lookup by GEOID)
 | US Census Geocoder | address → lat/lon + tract GEOID | none | `geographies/onelineaddress` returns coordinates and census geographies in one call |
 | FEMA NFHL (ArcGIS REST) | authoritative flood zone at a point | none | public MapServer; supports JSON/geoJSON queries |
 | FEMA NRI | per-tract multi-peril scores + Expected Annual Loss | none | static dataset loaded into PostGIS (Sprint 3 ETL) |
+| Supabase Auth | user sign-in; issues JWTs the API verifies | anon key (browser) + JWT secret (API) | email/password; HS256 token verification server-side |
 
 ## Key decisions
 

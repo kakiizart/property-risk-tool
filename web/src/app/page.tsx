@@ -2,16 +2,20 @@
 
 import { useState } from "react";
 import AddressSearch from "@/components/AddressSearch";
+import AuthPanel from "@/components/AuthPanel";
 import FloodZonePanel from "@/components/FloodZonePanel";
 import PerilScoresPanel from "@/components/PerilScoresPanel";
 import RiskMap from "@/components/RiskMap";
 import RiskReportSummary from "@/components/RiskReportSummary";
+import SavedReportsList from "@/components/SavedReportsList";
+import SaveReportButton from "@/components/SaveReportButton";
 import { getReport, type ReportResponse } from "@/lib/api";
 
 export default function Home() {
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedRefresh, setSavedRefresh] = useState(0);
 
   async function handleSearch(address: string) {
     setError(null);
@@ -29,8 +33,19 @@ export default function Home() {
     }
   }
 
+  // Load a previously saved report snapshot into the main view.
+  function handleOpenSaved(saved: ReportResponse) {
+    setError(null);
+    setLoading(false);
+    setReport(saved);
+  }
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
+      <div className="mb-8">
+        <AuthPanel />
+      </div>
+
       <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
         Property Risk &amp; Hazard Exposure
       </h1>
@@ -63,6 +78,14 @@ export default function Home() {
 
       {report && !loading && (
         <div className="mt-6 space-y-4">
+          {/* Save action (signed-in users only) */}
+          <div className="flex justify-end">
+            <SaveReportButton
+              address={report.address}
+              onSaved={() => setSavedRefresh((n) => n + 1)}
+            />
+          </div>
+
           {/* Overall assessment (composite + flood callout) */}
           {report.composite && (
             <RiskReportSummary
@@ -110,6 +133,10 @@ export default function Home() {
           zone, and multi-peril profile.
         </p>
       )}
+
+      <div className="mt-10">
+        <SavedReportsList refreshSignal={savedRefresh} onOpen={handleOpenSaved} />
+      </div>
     </main>
   );
 }

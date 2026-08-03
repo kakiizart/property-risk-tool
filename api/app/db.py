@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import asyncpg
 
@@ -76,3 +78,36 @@ def get_pool() -> asyncpg.Pool:
 def pool_available() -> bool:
     """True if the pool has been initialised (DATABASE_URL was set at startup)."""
     return _pool is not None
+
+
+@asynccontextmanager
+async def acquire_as_user(user_id: str) -> AsyncIterator[asyncpg.Connection]:
+    """Acquire a pooled connection scoped to *user_id* for row-level security.
+
+    The backend connects to Postgres directly (asyncpg), not through Supabase's
+    PostgREST, so ``auth.uid()`` is not populated automatically and — worse — a
+    table-owner connection would *bypass* RLS entirely. This context manager
+    fixes both: inside a transaction it switches to the non-owning
+    ``authenticated`` role and sets the request's JWT claims, so ``auth.uid()``
+    resolves to this user and the ``saved_report`` RLS policies actually enforce
+    row isolation in the database (defence in depth alongside the API's own
+    per-user filtering).
+
+    Both settings are transaction-local (``SET LOCAL ROLE`` /
+    ``set_config(..., is_local => true)``), so they reset automatically when the
+    connection is returned to the pool — safe under transaction pooling.
+
+    The claims value is passed as a bound parameter (never string-formatted), so
+    it cannot be used for SQL injection.
+    """
+    pool = get_pool()
+    claims = json.dumps({"sub": user_id, "role": "authenticated"})
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Role name cannot be parameterised; "authenticated" is a fixed
+            # literal, never user input.
+            await conn.execute("SET LOCAL ROLE authenticated")
+            await conn.execute(
+                "SELECT set_config('request.jwt.claims', $1, true)", claims
+            )
+            yield conn
