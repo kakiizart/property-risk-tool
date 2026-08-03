@@ -53,6 +53,15 @@ export default function SavedReportsList({
     }
   }, [accessToken]);
 
+  // Drop the previous account's data immediately when the signed-in identity
+  // changes, so one user's saved reports can never flash under another user's
+  // session while the new list loads. Keyed on the user id (not the whole user
+  // object) so a token refresh reloads without clearing to a skeleton.
+  useEffect(() => {
+    setItems(null);
+    setError(null);
+  }, [user?.id]);
+
   useEffect(() => {
     if (user && accessToken) void load();
   }, [user, accessToken, refreshSignal, load]);
