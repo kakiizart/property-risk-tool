@@ -34,11 +34,13 @@ cd web && npm run typecheck && npm run build
 ```
 
 ## Current state
-Sprints 0-3 complete: health/readiness, geocode (US Census), flood zone (FEMA
-NFHL), and NRI multi-peril scores (FEMA NRI loaded to Postgres), plus the initial
-migration (PostGIS + nri_tract + lookup_cache + saved_report with RLS), CI, docs.
-Verified: 54 backend tests pass (ruff clean); web typechecks, lints, and builds
-clean. Next: Sprint 4 composite scoring + result report.
+Sprints 0-4 complete: health/readiness, geocode (US Census), flood zone (FEMA
+NFHL), NRI multi-peril scores (FEMA NRI in Postgres), and composite scoring +
+the `POST /report` result endpoint, plus the initial migration (PostGIS +
+nri_tract + lookup_cache + saved_report with RLS), CI, docs. Verified end-to-end
+against live FEMA/Census + Postgres: 74 backend tests pass offline (+8 opt-in
+live golden-address checks, RUN_GOLDEN=1), ruff clean; web typechecks, lints,
+and builds clean. Next: Sprint 5 auth + saved reports (Supabase Auth + RLS).
 
 ## Do not
 - Provision cloud infra, push, deploy, or run destructive DB ops without explicit

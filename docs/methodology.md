@@ -27,9 +27,25 @@ Each is already a 0–100 relative NRI score; the app surfaces them rather than
 reinventing them.
 
 ## Composite score
-A documented weighted combination of the regional peril scores, with weights held
-in config (region-tunable), plus the flood tier as a called-out modifier. The
-composite is never shown without its component breakdown and the weights.
+A documented **weighted average** of the regional peril scores, with weights held
+in config (`DEFAULT_PERIL_WEIGHTS`; override via `PERIL_WEIGHTS_JSON`) and
+**normalised over whichever perils have data** for the tract, so missing data
+doesn't drag the score toward zero. Default weights (Erie's book):
+
+| Peril | Weight |
+|-------|--------|
+| Winter Weather (WNTW) | 0.22 |
+| Ice Storm (ISTM) | 0.18 |
+| Hail (HAIL) | 0.18 |
+| Strong Wind (SWND) | 0.17 |
+| Riverine Flooding (RFLD) | 0.15 |
+| Tornado (TRND) | 0.10 |
+
+Flood is a **called-out modifier, never blended in**: the overall tier is the
+more severe of the composite tier and the flood tier, so Special-Flood-Hazard-Area
+status is never hidden. The composite is always returned with its per-peril
+weights and contributions (which sum to the score). Implemented in
+`app/services/scoring.py`; served by `POST /report`.
 
 ## Expected Annual Loss
 The app surfaces NRI's building-level EAL (USD) for the tract. This is the number

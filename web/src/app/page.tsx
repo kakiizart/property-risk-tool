@@ -5,62 +5,28 @@ import AddressSearch from "@/components/AddressSearch";
 import FloodZonePanel from "@/components/FloodZonePanel";
 import PerilScoresPanel from "@/components/PerilScoresPanel";
 import RiskMap from "@/components/RiskMap";
-import {
-  geocodeAddress,
-  getFloodZone,
-  getNriScores,
-  type FloodZoneResponse,
-  type GeocodeResponse,
-  type NriResponse,
-} from "@/lib/api";
+import RiskReportSummary from "@/components/RiskReportSummary";
+import { getReport, type ReportResponse } from "@/lib/api";
 
 export default function Home() {
-  const [geocode, setGeocode] = useState<GeocodeResponse | null>(null);
-  const [flood, setFlood] = useState<FloodZoneResponse | null>(null);
-  const [nri, setNri] = useState<NriResponse | null>(null);
-  const [floodLoading, setFloodLoading] = useState(false);
-  const [nriLoading, setNriLoading] = useState(false);
+  const [report, setReport] = useState<ReportResponse | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSearch(address: string) {
     setError(null);
-    setGeocode(null);
-    setFlood(null);
-    setNri(null);
+    setReport(null);
+    setLoading(true);
 
-    // Step 1 — geocode (blocking: we need lat/lon + GEOID for everything else)
-    let geo: GeocodeResponse;
+    // One call: the API geocodes, looks up flood + NRI, and scores the composite.
     try {
-      geo = await geocodeAddress(address);
+      const result = await getReport(address);
+      setReport(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Geocoding failed.");
-      return;
+      setError(err instanceof Error ? err.message : "Could not build the risk report.");
+    } finally {
+      setLoading(false);
     }
-    setGeocode(geo);
-
-    // Steps 2 & 3 — flood zone + NRI scores run in parallel after geocode
-    setFloodLoading(true);
-    setNriLoading(true);
-
-    const [floodResult, nriResult] = await Promise.allSettled([
-      getFloodZone(geo.lat, geo.lon),
-      getNriScores(geo.tract_geoid),
-    ]);
-
-    if (floodResult.status === "fulfilled") {
-      setFlood(floodResult.value);
-    } else {
-      console.warn("Flood zone lookup failed:", floodResult.reason);
-    }
-    setFloodLoading(false);
-
-    if (nriResult.status === "fulfilled") {
-      setNri(nriResult.value);
-    } else {
-      // NRI 503 is expected when DATABASE_URL is not set (early dev / no Supabase yet)
-      console.warn("NRI lookup failed:", nriResult.reason);
-    }
-    setNriLoading(false);
   }
 
   return (
@@ -87,50 +53,61 @@ export default function Home() {
         </div>
       )}
 
-      {geocode && (
-        <div className="mt-4 space-y-4">
-          {/* Geocode result card */}
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-            <p className="font-medium text-slate-900">{geocode.matched_address}</p>
-            <p className="mt-1 text-slate-500">
-              {geocode.lat.toFixed(5)}, {geocode.lon.toFixed(5)}
-              &ensp;·&ensp;Census tract&nbsp;
-              <span className="font-mono">{geocode.tract_geoid}</span>
-            </p>
-          </div>
-
-          {/* Flood zone panel */}
-          {(floodLoading || flood) && (
-            <FloodZonePanel
-              data={flood ?? { zone_code: "…", flood_tier: "Low", description: "", geometry: {} }}
-              loading={floodLoading}
-            />
-          )}
-
-          {/* NRI per-peril panel */}
-          {(nriLoading || nri) && (
-            <PerilScoresPanel
-              data={
-                nri ?? {
-                  tract_geoid: geocode.tract_geoid,
-                  composite_score: null,
-                  eal_total_usd: null,
-                  perils: [],
-                  source: "",
-                }
-              }
-              loading={nriLoading}
-            />
-          )}
-
-          {/* Leaflet map */}
-          <RiskMap geocode={geocode} flood={flood} />
+      {loading && (
+        <div className="mt-6 animate-pulse space-y-4" aria-label="Building risk report">
+          <div className="h-28 rounded-lg bg-slate-100" />
+          <div className="h-20 rounded-md bg-slate-100" />
+          <div className="h-40 rounded-md bg-slate-100" />
         </div>
       )}
 
-      {!geocode && !error && (
+      {report && !loading && (
+        <div className="mt-6 space-y-4">
+          {/* Overall assessment (composite + flood callout) */}
+          {report.composite && (
+            <RiskReportSummary
+              data={report.composite}
+              matchedAddress={report.geocode.matched_address}
+            />
+          )}
+
+          {/* Geocode result card */}
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+            <p className="font-medium text-slate-900">{report.geocode.matched_address}</p>
+            <p className="mt-1 text-slate-500">
+              {report.geocode.lat.toFixed(5)}, {report.geocode.lon.toFixed(5)}
+              &ensp;·&ensp;Census tract&nbsp;
+              <span className="font-mono">{report.geocode.tract_geoid}</span>
+            </p>
+          </div>
+
+          {/* Flood zone */}
+          {report.flood ? (
+            <FloodZonePanel data={report.flood} />
+          ) : (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              Flood zone data is currently unavailable for this location.
+            </div>
+          )}
+
+          {/* NRI per-peril scores */}
+          {report.nri ? (
+            <PerilScoresPanel data={report.nri} />
+          ) : (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              NRI risk scores are unavailable for this census tract.
+            </div>
+          )}
+
+          {/* Map */}
+          <RiskMap geocode={report.geocode} flood={report.flood} />
+        </div>
+      )}
+
+      {!report && !error && !loading && (
         <p className="mt-8 text-sm text-slate-400">
-          Enter a US address above to see its flood zone and multi-peril risk profile.
+          Enter a US address above to see its overall risk assessment, flood
+          zone, and multi-peril profile.
         </p>
       )}
     </main>

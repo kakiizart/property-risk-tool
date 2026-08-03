@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import flood, geocode, health, nri
+from app.api.routes import flood, geocode, health, nri, report
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db import close_pool, init_pool
@@ -62,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(geocode.router)
     app.include_router(flood.router)
     app.include_router(nri.router)
+    app.include_router(report.router)
 
     return app
 

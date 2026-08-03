@@ -42,6 +42,33 @@ export interface NriResponse {
   source: string;
 }
 
+export interface CompositeContribution {
+  code: string;
+  name: string;
+  score: number | null;
+  weight: number;
+  contribution: number | null; // score * normalised weight; sums to composite_score
+}
+
+export interface CompositeResult {
+  composite_score: number | null;
+  composite_tier: string;
+  overall_tier: string; // more severe of composite_tier and flood_tier
+  flood_tier: string;
+  flood_is_sfha: boolean;
+  weights: Record<string, number>;
+  contributions: CompositeContribution[];
+  methodology: string;
+}
+
+export interface ReportResponse {
+  address: string;
+  geocode: GeocodeResponse;
+  flood: FloodZoneResponse | null;
+  nri: NriResponse | null;
+  composite: CompositeResult | null;
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -112,4 +139,24 @@ export function getFloodZone(lat: number, lon: number): Promise<FloodZoneRespons
  */
 export function getNriScores(tractGeoid: string): Promise<NriResponse> {
   return request<NriResponse>("GET", `/nri?tract_geoid=${tractGeoid}`);
+}
+
+/**
+ * Client timeout for the aggregate /report call.
+ *
+ * Unlike the per-endpoint calls, /report runs geocode -> (flood + NRI) on the
+ * server, so its worst case is the geocode budget *plus* the flood/NRI budget,
+ * not a single endpoint's. The backend allows an 8s timeout with one retry per
+ * external service, i.e. geocode up to ~16s followed by flood/NRI (concurrent)
+ * up to ~16s. Give the browser room to outlast that so a slow-but-valid request
+ * isn't aborted client-side; the typical response is 1-3s.
+ */
+const REPORT_TIMEOUT_MS = 35_000;
+
+/**
+ * Full risk report for an address — geocode + flood + NRI + composite in one call.
+ * `flood`, `nri`, and `composite` may be null if an upstream source is unavailable.
+ */
+export function getReport(address: string): Promise<ReportResponse> {
+  return request<ReportResponse>("POST", "/report", { address }, REPORT_TIMEOUT_MS);
 }

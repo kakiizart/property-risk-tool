@@ -7,10 +7,24 @@ full list of variables.
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Default composite weights for the region-relevant NRI perils (Erie's book:
+# PA / Great Lakes / mid-Atlantic). Region-tunable via the PERIL_WEIGHTS_JSON
+# env var. Weights are relative; the scoring function normalises over whichever
+# perils actually have data for a tract. See docs/methodology.md.
+DEFAULT_PERIL_WEIGHTS: dict[str, float] = {
+    "WNTW": 0.22,  # Winter Weather
+    "ISTM": 0.18,  # Ice Storm
+    "HAIL": 0.18,  # Hail
+    "SWND": 0.17,  # Strong Wind
+    "RFLD": 0.15,  # Riverine (inland) Flooding
+    "TRND": 0.10,  # Tornado
+}
 
 
 class Settings(BaseSettings):
@@ -44,6 +58,18 @@ class Settings(BaseSettings):
     # --- Outbound HTTP behavior ---
     http_timeout_seconds: float = Field(default=8.0)
     http_max_retries: int = Field(default=1)
+
+    # --- Scoring ---
+    # Optional JSON object overriding the default composite peril weights, e.g.
+    # '{"HAIL": 0.3, "SWND": 0.2, ...}'. Empty = use DEFAULT_PERIL_WEIGHTS.
+    peril_weights_json: str = Field(default="")
+
+    @property
+    def peril_weights(self) -> dict[str, float]:
+        """Composite peril weights, from the env override or documented defaults."""
+        if self.peril_weights_json.strip():
+            return json.loads(self.peril_weights_json)
+        return dict(DEFAULT_PERIL_WEIGHTS)
 
     @property
     def cors_origin_list(self) -> list[str]:
