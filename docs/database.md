@@ -5,13 +5,14 @@ are ordered and additive.
 
 ## Applying migrations
 
-Any one of:
-- **Supabase SQL editor** — paste the migration and run.
+Apply migrations in order (`0001` then `0002`). Any one of:
+- **Supabase SQL editor** — paste each migration and run.
 - **Supabase CLI** — `supabase db push` (or `supabase migration up`).
-- **psql** — `psql "$DATABASE_URL" -f db/migrations/0001_init.sql`.
+- **psql** — `psql "$DATABASE_URL" -f db/migrations/0001_init.sql` then
+  `... -f db/migrations/0002_saved_report_grants.sql`.
 
-`0001_init.sql` assumes the Supabase `auth` schema exists (for `auth.users` and
-`auth.uid()` in the RLS policies).
+Both assume the Supabase `auth` schema and roles exist (`auth.users`,
+`auth.uid()` for the RLS policies; the `authenticated` role for `0002`).
 
 ## Tables
 
@@ -32,10 +33,21 @@ with an `expires_at`; an index on `expires_at` supports cleanup.
 ### `saved_report`
 User-owned risk reports (Sprint 5).
 - `user_id` → `auth.users(id)`, cascade on delete.
-- `result` (jsonb) — snapshot of the full report.
+- `result` (jsonb) — snapshot of the full report (same shape as `POST /report`).
 - Index on `(user_id, created_at desc)` for listing.
-- **RLS enabled**; four policies restrict select/insert/update/delete to
+- **RLS enabled** (`0001`); four policies restrict select/insert/update/delete to
   `auth.uid() = user_id`.
+- **`0002_saved_report_grants.sql`** grants the `authenticated` role
+  select/insert/update/delete on the table.
+
+**How RLS is enforced over asyncpg.** The API connects directly (not via
+PostREST), so `auth.uid()` isn't set for free and a table-owner connection would
+bypass RLS. Per request, `app/db.py::acquire_as_user` opens a transaction,
+`SET LOCAL ROLE authenticated`, and sets `request.jwt.claims` (transaction-local),
+so `auth.uid()` resolves to the caller and the policies enforce isolation in the
+database. The `0002` grants are what let the scoped role touch the table at all;
+RLS still governs *which rows*. See `docs/security.md` for the threat model and a
+manual isolation test.
 
 ## Conventions
 - `created_at` / `updated_at` on mutable tables; `updated_at` maintained by the

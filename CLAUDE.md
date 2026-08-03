@@ -34,13 +34,19 @@ cd web && npm run typecheck && npm run build
 ```
 
 ## Current state
-Sprints 0-4 complete: health/readiness, geocode (US Census), flood zone (FEMA
-NFHL), NRI multi-peril scores (FEMA NRI in Postgres), and composite scoring +
-the `POST /report` result endpoint, plus the initial migration (PostGIS +
-nri_tract + lookup_cache + saved_report with RLS), CI, docs. Verified end-to-end
-against live FEMA/Census + Postgres: 74 backend tests pass offline (+8 opt-in
-live golden-address checks, RUN_GOLDEN=1), ruff clean; web typechecks, lints,
-and builds clean. Next: Sprint 5 auth + saved reports (Supabase Auth + RLS).
+Sprints 0-5 complete. Sprint 5 adds Supabase Auth (email/password) + user-owned
+saved reports: HS256 JWT verification at the API boundary (`services/auth.py` +
+`api/deps.py`), an RLS-scoped DB helper (`SET LOCAL ROLE authenticated` +
+`request.jwt.claims`) so the `saved_report` policies enforce isolation in the DB
+even though the backend uses asyncpg (not PostgREST), the `/reports` CRUD
+endpoints, migration `0002` (authenticated grants), and the frontend auth +
+saved-reports UI. Also fixed `requirements.txt` (was missing `asyncpg`, which
+broke the Docker image; added `asyncpg` + `pyjwt`). New doc: `docs/security.md`.
+Verified offline: ruff clean, 100 backend tests pass (+8 opt-in golden,
+RUN_GOLDEN=1); web typechecks, lints, builds clean. NOT yet verified live: real
+Supabase sign-in + RLS isolation (needs a provisioned project; steps in
+docs/security.md). Next: Sprint 6 harden + deploy (rate-limit `/reports`, deploy,
+live smoke test).
 
 ## Do not
 - Provision cloud infra, push, deploy, or run destructive DB ops without explicit

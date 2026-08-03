@@ -24,3 +24,5 @@ def test_ready_returns_200_in_development() -> None:
     assert body["status"] == "ok"
     assert body["checks"]["geocoder_configured"] is True
     assert body["checks"]["nfhl_configured"] is True
+    # Auth is optional in development, so readiness stays "ok" even unconfigured.
+    assert body["checks"]["auth_configured"] is True

@@ -69,24 +69,56 @@ export interface ReportResponse {
   composite: CompositeResult | null;
 }
 
+// --- Saved reports (auth-required) ---
+
+export interface SavedReportSummary {
+  id: string;
+  address: string;
+  overall_tier: string | null;
+  created_at: string; // ISO 8601
+}
+
+export interface SavedReportDetail {
+  id: string;
+  address: string;
+  created_at: string; // ISO 8601
+  updated_at: string; // ISO 8601
+  result: ReportResponse; // full snapshot, same shape as a live report
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/** Error carrying the HTTP status, so callers can special-case 401/403 etc. */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   path: string,
   body?: unknown,
   timeoutMs = 10_000,
+  token?: string,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const headers: Record<string, string> = {};
+  if (body) headers["Content-Type"] = "application/json";
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   try {
     const res = await fetch(`${API_URL}${path}`, {
       method,
       signal: controller.signal,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -99,9 +131,10 @@ async function request<T>(
       } catch {
         // ignore parse failure — use statusText
       }
-      throw new Error(detail);
+      throw new ApiError(res.status, detail);
     }
 
+    if (res.status === 204) return undefined as T; // no content (e.g. DELETE)
     return (await res.json()) as T;
   } finally {
     clearTimeout(timer);
@@ -159,4 +192,31 @@ const REPORT_TIMEOUT_MS = 35_000;
  */
 export function getReport(address: string): Promise<ReportResponse> {
   return request<ReportResponse>("POST", "/report", { address }, REPORT_TIMEOUT_MS);
+}
+
+// ---------------------------------------------------------------------------
+// Saved reports — all require a Supabase access token
+// ---------------------------------------------------------------------------
+
+/**
+ * Build and save a report for the current user.
+ * The server re-runs the pipeline, so this shares /report's latency budget.
+ */
+export function saveReport(address: string, token: string): Promise<SavedReportDetail> {
+  return request<SavedReportDetail>("POST", "/reports", { address }, REPORT_TIMEOUT_MS, token);
+}
+
+/** List the current user's saved reports (newest first). */
+export function listReports(token: string): Promise<SavedReportSummary[]> {
+  return request<SavedReportSummary[]>("GET", "/reports", undefined, 10_000, token);
+}
+
+/** Fetch one saved report (with its full snapshot) by id. */
+export function getSavedReport(id: string, token: string): Promise<SavedReportDetail> {
+  return request<SavedReportDetail>("GET", `/reports/${id}`, undefined, 10_000, token);
+}
+
+/** Delete one saved report by id. */
+export function deleteReport(id: string, token: string): Promise<void> {
+  return request<void>("DELETE", `/reports/${id}`, undefined, 10_000, token);
 }
