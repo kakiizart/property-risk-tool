@@ -5,22 +5,25 @@ Supabase issues signed JWTs to signed-in users. This module verifies those
 tokens on the API side so protected endpoints can trust the caller's identity
 without a round-trip to Supabase.
 
-Verification (HS256, the shared "JWT Secret" from the Supabase project) checks:
-  - signature   (rejects forged / tampered tokens)
-  - expiry      (`exp`)
-  - audience    (`aud`, default "authenticated")
-  - presence of `sub` (the user id)
+Algorithms
+----------
+Modern Supabase projects sign **user access tokens with asymmetric keys
+(ES256)**, published at the project's JWKS endpoint
+(``<SUPABASE_URL>/auth/v1/.well-known/jwks.json``). Older projects (and the
+anon/service keys) use the **HS256 shared secret**. We support both, selected by
+the token's ``alg`` header:
 
-The verified `sub` is the user's UUID — the same value the `saved_report`
-RLS policies compare against ``auth.uid()`` (see app.db.acquire_as_user).
+  * ES256 / RS256 / …  -> verified against the project JWKS (fetched + cached)
+  * HS256              -> verified against SUPABASE_JWT_SECRET (fallback)
 
-Design note
------------
-Newer Supabase projects can also sign with asymmetric keys (ES256/RS256) served
-from a JWKS endpoint. We deliberately support only the HS256 shared secret here:
-it is available on every project, needs no network fetch, and keeps the trust
-boundary to a single documented secret. The trade-off is recorded in
-docs/security.md.
+Either configuration alone is sufficient (see Settings.auth_configured).
+
+Every token is additionally checked for expiry (``exp``), audience (``aud``,
+default "authenticated"), and a subject (``sub``) — the user's UUID, the same
+value the ``saved_report`` RLS policies compare against ``auth.uid()``.
+
+Note: JWKS retrieval does blocking network I/O, so callers on the async path
+should invoke :func:`verify_token` via a worker thread (see app.api.deps).
 """
 
 from __future__ import annotations
@@ -28,8 +31,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import jwt
+from jwt import PyJWKClient
 
 from app.core.config import get_settings
+
+# Asymmetric algorithms verified via the project JWKS.
+_ASYMMETRIC_ALGS = ("ES256", "ES384", "ES512", "RS256", "RS384", "RS512", "EdDSA")
+
+# One cached PyJWKClient per JWKS URL (it caches keys and refreshes on kid miss).
+_jwk_clients: dict[str, PyJWKClient] = {}
 
 
 class AuthError(Exception):
@@ -37,11 +47,11 @@ class AuthError(Exception):
 
 
 class AuthNotConfiguredError(AuthError):
-    """SUPABASE_JWT_SECRET is not set — the server cannot verify tokens (503)."""
+    """No verification source is configured (no JWKS URL and no secret). 503."""
 
 
 class InvalidTokenError(AuthError):
-    """Token is missing, malformed, expired, or failed verification (401)."""
+    """Token is missing, malformed, expired, or failed verification. 401."""
 
 
 @dataclass(frozen=True)
@@ -53,26 +63,60 @@ class CurrentUser:
     token: str         # raw access token (retained only within the request)
 
 
+def _signing_key_for(token: str, jwks_url: str) -> object:
+    """Return the public key that signed *token*, from the project JWKS (cached).
+
+    Factored out so tests can inject a key without hitting the network.
+    """
+    client = _jwk_clients.get(jwks_url)
+    if client is None:
+        client = PyJWKClient(jwks_url, cache_keys=True, lifespan=600)
+        _jwk_clients[jwks_url] = client
+    return client.get_signing_key_from_jwt(token).key
+
+
 def verify_token(token: str) -> CurrentUser:
     """Verify a Supabase access token and return the authenticated user.
 
     Raises:
-        AuthNotConfiguredError: no signing secret is configured (maps to 503).
-        InvalidTokenError: token missing / expired / forged / wrong audience (401).
+        AuthNotConfiguredError: no JWKS URL and no secret configured (503).
+        InvalidTokenError: token missing / expired / forged / wrong audience /
+            unsupported algorithm / signing key unavailable (401).
     """
     settings = get_settings()
     if not settings.auth_configured:
         raise AuthNotConfiguredError(
-            "Auth is not configured. Set SUPABASE_JWT_SECRET to enable saved reports."
+            "Auth is not configured. Set SUPABASE_URL (JWKS) or SUPABASE_JWT_SECRET."
         )
     if not token:
         raise InvalidTokenError("Missing bearer token.")
 
     try:
+        alg = jwt.get_unverified_header(token).get("alg")
+    except jwt.InvalidTokenError as exc:
+        raise InvalidTokenError("Invalid authentication token.") from exc
+
+    # Resolve the verification key by algorithm family (config checked first, so
+    # our own errors are never swallowed by the decode except-handlers below).
+    if alg == "HS256":
+        if not settings.supabase_jwt_secret:
+            raise InvalidTokenError("HS256 token received but no shared secret is configured.")
+        key: object = settings.supabase_jwt_secret
+    elif alg in _ASYMMETRIC_ALGS:
+        if not settings.supabase_jwks_url:
+            raise InvalidTokenError("Asymmetric token received but no JWKS URL is configured.")
+        try:
+            key = _signing_key_for(token, settings.supabase_jwks_url)
+        except Exception as exc:  # PyJWKClientError, kid miss, network failure
+            raise InvalidTokenError("Could not resolve the token signing key.") from exc
+    else:
+        raise InvalidTokenError(f"Unsupported token algorithm: {alg!r}.")
+
+    try:
         claims = jwt.decode(
             token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
+            key,
+            algorithms=[alg],
             audience=settings.supabase_jwt_audience,
             options={"require": ["exp", "sub"]},
         )

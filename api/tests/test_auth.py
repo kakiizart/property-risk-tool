@@ -12,6 +12,7 @@ import time
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
@@ -21,7 +22,13 @@ from app.services.auth import (
     InvalidTokenError,
     verify_token,
 )
-from tests.conftest import AUTH_SECRET, USER_ID, auth_header, make_token
+from tests.conftest import (
+    AUTH_SECRET,
+    USER_ID,
+    auth_header,
+    make_es256_token,
+    make_token,
+)
 
 client = TestClient(app)
 
@@ -90,3 +97,31 @@ class TestAuthDependency:
     def test_invalid_token_returns_401(self, auth_configured) -> None:
         resp = client.get("/reports", headers=auth_header(make_token(exp_delta=-10)))
         assert resp.status_code == 401
+
+
+class TestVerifyTokenAsymmetric:
+    """Modern Supabase signs user access tokens with ES256, verified via JWKS."""
+
+    def test_valid_es256_token_accepted(self, es256_auth) -> None:
+        user = verify_token(make_es256_token(es256_auth))
+        assert user.id == USER_ID
+        assert user.email == "user@example.com"
+
+    def test_es256_wrong_key_rejected(self, es256_auth) -> None:
+        # Token signed by a different key than the JWKS resolver returns.
+        other_key = ec.generate_private_key(ec.SECP256R1())
+        with pytest.raises(InvalidTokenError):
+            verify_token(make_es256_token(other_key))
+
+    def test_es256_expired_rejected(self, es256_auth) -> None:
+        with pytest.raises(InvalidTokenError):
+            verify_token(make_es256_token(es256_auth, exp_delta=-10))
+
+    def test_es256_wrong_audience_rejected(self, es256_auth) -> None:
+        with pytest.raises(InvalidTokenError):
+            verify_token(make_es256_token(es256_auth, aud="anon"))
+
+    def test_es256_passes_auth_dependency_then_503_without_db(self, es256_auth) -> None:
+        token = make_es256_token(es256_auth)
+        resp = client.get("/reports", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 503  # auth passed; DB not configured

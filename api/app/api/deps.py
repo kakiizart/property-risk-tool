@@ -8,6 +8,7 @@ they are mapped to the right HTTP status here.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -45,7 +46,8 @@ async def get_current_user(
         )
 
     try:
-        return verify_token(credentials.credentials)
+        # verify_token may do blocking JWKS I/O; keep it off the event loop.
+        return await asyncio.to_thread(verify_token, credentials.credentials)
     except AuthNotConfiguredError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)

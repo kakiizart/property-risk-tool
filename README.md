@@ -74,8 +74,8 @@ cd web && npm run typecheck && npm run build # typecheck + build
 | 5 | Auth + saved reports (Supabase Auth + RLS) | ✅ done¹ |
 | 6 | Harden + deploy | ⬜ |
 
-¹ Code complete and verified offline (lint, tests, typecheck, build). Live
-end-to-end verification (real Supabase sign-in + RLS isolation) is pending a
-provisioned Supabase project — steps in `docs/security.md`.
+¹ Code complete; verified offline (lint, tests, typecheck, build) **and live**
+against a provisioned Supabase project — DB-layer RLS isolation and real ES256
+token auth. See `docs/security.md`.
 
 See `docs/` for architecture, the scoring methodology, security, and the runbook.
