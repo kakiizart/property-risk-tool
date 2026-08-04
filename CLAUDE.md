@@ -34,19 +34,25 @@ cd web && npm run typecheck && npm run build
 ```
 
 ## Current state
-Sprints 0-5 complete. Sprint 5 adds Supabase Auth (email/password) + user-owned
-saved reports: HS256 JWT verification at the API boundary (`services/auth.py` +
-`api/deps.py`), an RLS-scoped DB helper (`SET LOCAL ROLE authenticated` +
-`request.jwt.claims`) so the `saved_report` policies enforce isolation in the DB
-even though the backend uses asyncpg (not PostgREST), the `/reports` CRUD
-endpoints, migration `0002` (authenticated grants), and the frontend auth +
-saved-reports UI. Also fixed `requirements.txt` (was missing `asyncpg`, which
-broke the Docker image; added `asyncpg` + `pyjwt`). New doc: `docs/security.md`.
-Verified offline: ruff clean, 100 backend tests pass (+8 opt-in golden,
-RUN_GOLDEN=1); web typechecks, lints, builds clean. NOT yet verified live: real
-Supabase sign-in + RLS isolation (needs a provisioned project; steps in
-docs/security.md). Next: Sprint 6 harden + deploy (rate-limit `/reports`, deploy,
-live smoke test).
+Sprints 0-5 complete. Sprint 5 = Supabase Auth (email/password) + user-owned
+saved reports: JWT verification at the API boundary (`services/auth.py` +
+`api/deps.py`) — verifies modern Supabase **ES256** tokens against the project
+JWKS (`SUPABASE_URL`), with HS256 (`SUPABASE_JWT_SECRET`) as a fallback — plus an
+RLS-scoped DB helper (`SET LOCAL ROLE authenticated` + `request.jwt.claims`) so
+the `saved_report` policies enforce isolation in the DB even though the backend
+uses asyncpg (not PostgREST), the `/reports` CRUD endpoints, migration `0002`
+(authenticated grants), and the frontend auth + saved-reports UI. Deps: added
+`asyncpg` + `pyjwt[crypto]` (also fixed `requirements.txt`, which was missing
+asyncpg and broke the Docker image). Doc: `docs/security.md`.
+
+Verified offline: ruff clean, 105 backend tests pass (+8 opt-in golden). Verified
+LIVE against a provisioned Supabase project (`property-risk-tool`): DB-layer RLS
+isolation (two users; cross-user read blocked, write blocked with `42501`) and
+real ES256 token auth through the running API. The ES256/JWKS support was added
+after live testing showed Supabase signs user tokens with ES256, not HS256 (an
+HS256-only verifier rejected real users). Still pending: full DB-backed
+CRUD-over-HTTP e2e (needs the project DB password). Next: Sprint 6 harden + deploy
+(rate-limit `/reports`, deploy).
 
 ## Do not
 - Provision cloud infra, push, deploy, or run destructive DB ops without explicit

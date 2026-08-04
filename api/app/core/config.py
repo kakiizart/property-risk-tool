@@ -48,8 +48,11 @@ class Settings(BaseSettings):
     database_url: str = Field(default="")
 
     # --- Auth (Supabase Auth / JWT verification) ---
-    # HS256 secret from Supabase: Project Settings > API > JWT Settings > "JWT Secret".
-    # Empty until the project exists; auth-protected endpoints return 503 when unset.
+    # Project URL, e.g. https://<ref>.supabase.co. Used to fetch the JWKS that
+    # verifies modern (asymmetric, ES256) Supabase access tokens.
+    supabase_url: str = Field(default="")
+    # Legacy HS256 shared secret (Project Settings > API > JWT Settings). Optional
+    # fallback for projects/tokens still signed with HS256.
     supabase_jwt_secret: str = Field(default="")
     # Expected `aud` claim on Supabase access tokens (default for signed-in users).
     supabase_jwt_audience: str = Field(default="authenticated")
@@ -87,9 +90,16 @@ class Settings(BaseSettings):
         return self.environment.lower() == "production"
 
     @property
+    def supabase_jwks_url(self) -> str:
+        """JWKS endpoint for verifying asymmetric access tokens (derived from URL)."""
+        if not self.supabase_url:
+            return ""
+        return self.supabase_url.rstrip("/") + "/auth/v1/.well-known/jwks.json"
+
+    @property
     def auth_configured(self) -> bool:
-        """True if Supabase JWT verification is configured (secret present)."""
-        return bool(self.supabase_jwt_secret)
+        """True if token verification is possible: a JWKS source or an HS256 secret."""
+        return bool(self.supabase_url or self.supabase_jwt_secret)
 
 
 @lru_cache
