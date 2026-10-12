@@ -14,6 +14,12 @@ Apply migrations in order (`0001` then `0002`). Any one of:
 Both assume the Supabase `auth` schema and roles exist (`auth.users`,
 `auth.uid()` for the RLS policies; the `authenticated` role for `0002`).
 
+Migrations, in order: `0001_init.sql` (PostGIS + tables + saved_report RLS),
+`0002_saved_report_grants.sql` (authenticated-role grants), and
+`0003_lock_down_public_data_tables.sql` (RLS on + API-role grants revoked for
+`nri_tract` and `lookup_cache`, so the browser-facing Supabase REST API cannot
+read or write them; the backend reaches them as the table owner).
+
 ## Tables
 
 ### `nri_tract`

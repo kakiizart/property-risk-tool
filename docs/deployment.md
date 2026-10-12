@@ -5,7 +5,7 @@ Three independently deployed pieces, all on free tiers.
 ## Database — Supabase
 1. Create a Supabase project (choose a region near Erie, PA, e.g. `us-east`).
 2. In the SQL editor, run `db/migrations/0001_init.sql` (enables PostGIS), then
-   `db/migrations/0002_saved_report_grants.sql`.
+   `db/migrations/0002_saved_report_grants.sql` and `0003_lock_down_public_data_tables.sql`.
 3. **Connect → Session pooler** connection string → the backend's `DATABASE_URL`
    (IPv4-compatible; the direct `db.<ref>.supabase.co` host is IPv6-only).
 4. Project URL → the backend's `SUPABASE_URL` (JWKS token verification) and the
