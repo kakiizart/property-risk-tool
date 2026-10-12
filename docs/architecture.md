@@ -62,7 +62,7 @@ GET/DELETE /reports[/id] ─ verify JWT ─► RLS-scoped query (own rows only)
 | US Census Geocoder | address → lat/lon + tract GEOID | none | `geographies/onelineaddress` returns coordinates and census geographies in one call |
 | FEMA NFHL (ArcGIS REST) | authoritative flood zone at a point | none | public MapServer; supports JSON/geoJSON queries |
 | FEMA NRI | per-tract multi-peril scores + Expected Annual Loss | none | static dataset loaded into PostGIS (Sprint 3 ETL) |
-| Supabase Auth | user sign-in; issues JWTs the API verifies | anon key (browser) + JWT secret (API) | email/password; HS256 token verification server-side |
+| Supabase Auth | user sign-in; issues JWTs the API verifies | publishable key (browser); project URL for public JWKS (API) | email/password; ES256 verification via JWKS server-side (legacy HS256 optional) |
 
 ## Key decisions
 

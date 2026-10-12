@@ -35,7 +35,7 @@ cd web && npm run typecheck && npm run build
 
 ## Current state
 Sprints 0-5 complete. Sprint 5 adds Supabase Auth (email/password) + user-owned
-saved reports: HS256 JWT verification at the API boundary (`services/auth.py` +
+saved reports: JWT verification at the API boundary (`services/auth.py` +
 `api/deps.py`), an RLS-scoped DB helper (`SET LOCAL ROLE authenticated` +
 `request.jwt.claims`) so the `saved_report` policies enforce isolation in the DB
 even though the backend uses asyncpg (not PostgREST), the `/reports` CRUD
@@ -47,6 +47,12 @@ RUN_GOLDEN=1); web typechecks, lints, builds clean. NOT yet verified live: real
 Supabase sign-in + RLS isolation (needs a provisioned project; steps in
 docs/security.md). Next: Sprint 6 harden + deploy (rate-limit `/reports`, deploy,
 live smoke test).
+
+Post-Sprint 5 fix: token verification now uses the project's public JWKS
+(ES256, the default for Supabase projects created since Oct 2025) via
+`SUPABASE_URL`, with the HS256 legacy secret as an optional fallback; the
+asyncpg pool sets `statement_cache_size=0` so it works on either Supabase pooler
+mode; tests are isolated from a local `api/.env`. 113 backend tests pass.
 
 ## Do not
 - Provision cloud infra, push, deploy, or run destructive DB ops without explicit

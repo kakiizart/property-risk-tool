@@ -50,7 +50,7 @@ npm run dev
 ```
 
 ### Auth (optional)
-Saved reports need Supabase. Set `SUPABASE_JWT_SECRET` (api) and
+Saved reports need Supabase. Set `SUPABASE_URL` (api) and
 `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` (web), then apply
 `db/migrations/0002_saved_report_grants.sql`. Leave them unset to run the public
 risk lookup without accounts (the saved-report UI hides itself). See

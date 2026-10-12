@@ -2,34 +2,43 @@
 Supabase Auth — access-token (JWT) verification.
 
 Supabase issues signed JWTs to signed-in users. This module verifies those
-tokens on the API side so protected endpoints can trust the caller's identity
-without a round-trip to Supabase.
+tokens on the API side so protected endpoints can trust the caller's identity.
 
-Verification (HS256, the shared "JWT Secret" from the Supabase project) checks:
+Two signing schemes are supported, chosen by the token's ``alg`` header:
+
+- **Asymmetric (ES256 / RS256 / EdDSA)** — the default for Supabase projects
+  created since October 2025. The public key is fetched from the project's
+  JWKS endpoint (``<SUPABASE_URL>/auth/v1/.well-known/jwks.json``) and cached,
+  so verification needs no shared secret at all.
+- **HS256 legacy shared secret** — for older projects that still sign with the
+  "Legacy JWT Secret". Only accepted when ``SUPABASE_JWT_SECRET`` is set.
+
+Either way the check covers:
   - signature   (rejects forged / tampered tokens)
   - expiry      (`exp`)
   - audience    (`aud`, default "authenticated")
   - presence of `sub` (the user id)
 
+Algorithm-confusion guard: the allowed algorithm comes from the *key* (the
+JWK's own algorithm, or HS256 for the configured secret), never from the token
+header alone, and ``alg: none`` is always rejected.
+
 The verified `sub` is the user's UUID — the same value the `saved_report`
 RLS policies compare against ``auth.uid()`` (see app.db.acquire_as_user).
-
-Design note
------------
-Newer Supabase projects can also sign with asymmetric keys (ES256/RS256) served
-from a JWKS endpoint. We deliberately support only the HS256 shared secret here:
-it is available on every project, needs no network fetch, and keeps the trust
-boundary to a single documented secret. The trade-off is recorded in
-docs/security.md.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import jwt
 
 from app.core.config import get_settings
+
+ASYMMETRIC_ALGORITHMS = frozenset({"ES256", "RS256", "EdDSA"})
+JWKS_CACHE_SECONDS = 600  # matches Supabase's own edge cache window
+JWKS_TIMEOUT_SECONDS = 5
 
 
 class AuthError(Exception):
@@ -37,7 +46,11 @@ class AuthError(Exception):
 
 
 class AuthNotConfiguredError(AuthError):
-    """SUPABASE_JWT_SECRET is not set — the server cannot verify tokens (503)."""
+    """Neither SUPABASE_URL nor SUPABASE_JWT_SECRET is set (503)."""
+
+
+class AuthUnavailableError(AuthError):
+    """The project's JWKS endpoint could not be reached to verify a token (503)."""
 
 
 class InvalidTokenError(AuthError):
@@ -53,26 +66,82 @@ class CurrentUser:
     token: str         # raw access token (retained only within the request)
 
 
+@lru_cache(maxsize=4)
+def get_jwks_client(jwks_url: str) -> jwt.PyJWKClient:
+    """One cached JWKS client per URL, so keys are fetched once per cache window."""
+    return jwt.PyJWKClient(
+        jwks_url,
+        cache_jwk_set=True,
+        lifespan=JWKS_CACHE_SECONDS,
+        timeout=JWKS_TIMEOUT_SECONDS,
+    )
+
+
+def _resolve_key(token: str, alg: str | None) -> tuple[object, list[str]]:
+    """Pick the verification key and the single algorithm it may be used with."""
+    settings = get_settings()
+
+    if alg == "HS256":
+        if not settings.supabase_jwt_secret:
+            raise InvalidTokenError("Invalid authentication token.")
+        return settings.supabase_jwt_secret, ["HS256"]
+
+    if alg in ASYMMETRIC_ALGORITHMS:
+        if not settings.supabase_jwks_url:
+            raise InvalidTokenError("Invalid authentication token.")
+        try:
+            signing_key = get_jwks_client(settings.supabase_jwks_url).get_signing_key_from_jwt(
+                token
+            )
+        except jwt.PyJWKClientConnectionError as exc:
+            raise AuthUnavailableError(
+                "Could not reach the auth key server to verify the token."
+            ) from exc
+        except (jwt.PyJWKClientError, jwt.InvalidTokenError) as exc:
+            # Unknown `kid`, malformed JWKS, or a key type we cannot use.
+            raise InvalidTokenError("Invalid authentication token.") from exc
+
+        key_alg = signing_key.algorithm_name
+        if key_alg not in ASYMMETRIC_ALGORITHMS or key_alg != alg:
+            raise InvalidTokenError("Invalid authentication token.")
+        return signing_key.key, [key_alg]
+
+    # Includes `none` and anything we do not explicitly support.
+    raise InvalidTokenError("Invalid authentication token.")
+
+
 def verify_token(token: str) -> CurrentUser:
     """Verify a Supabase access token and return the authenticated user.
 
+    May perform a (cached) network fetch of the project's JWKS, so async callers
+    should run it in a worker thread.
+
     Raises:
-        AuthNotConfiguredError: no signing secret is configured (maps to 503).
+        AuthNotConfiguredError: no verification method is configured (maps to 503).
+        AuthUnavailableError: the JWKS endpoint is unreachable (maps to 503).
         InvalidTokenError: token missing / expired / forged / wrong audience (401).
     """
     settings = get_settings()
     if not settings.auth_configured:
         raise AuthNotConfiguredError(
-            "Auth is not configured. Set SUPABASE_JWT_SECRET to enable saved reports."
+            "Auth is not configured. Set SUPABASE_URL (or the legacy "
+            "SUPABASE_JWT_SECRET) to enable saved reports."
         )
     if not token:
         raise InvalidTokenError("Missing bearer token.")
 
     try:
+        alg = jwt.get_unverified_header(token).get("alg")
+    except jwt.InvalidTokenError as exc:
+        raise InvalidTokenError("Invalid authentication token.") from exc
+
+    key, algorithms = _resolve_key(token, alg)
+
+    try:
         claims = jwt.decode(
             token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
+            key,
+            algorithms=algorithms,
             audience=settings.supabase_jwt_audience,
             options={"require": ["exp", "sub"]},
         )

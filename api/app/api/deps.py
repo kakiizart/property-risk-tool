@@ -11,10 +11,12 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.services.auth import (
     AuthNotConfiguredError,
+    AuthUnavailableError,
     CurrentUser,
     InvalidTokenError,
     verify_token,
@@ -35,7 +37,7 @@ async def get_current_user(
     """Resolve and verify the caller's Supabase access token.
 
     401 if the token is missing / invalid / expired; 503 if auth is not
-    configured on the server.
+    configured on the server or the signing-key server is unreachable.
     """
     if credentials is None or not credentials.credentials:
         raise HTTPException(
@@ -45,8 +47,10 @@ async def get_current_user(
         )
 
     try:
-        return verify_token(credentials.credentials)
-    except AuthNotConfiguredError as exc:
+        # Verification may fetch the project's JWKS (cached), so keep it off
+        # the event loop.
+        return await run_in_threadpool(verify_token, credentials.credentials)
+    except (AuthNotConfiguredError, AuthUnavailableError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
         ) from exc
