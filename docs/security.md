@@ -12,7 +12,7 @@ Browser ──(Supabase Auth: email+password)──► Supabase issues a signed 
    │
    │  Authorization: Bearer <access token>
    ▼
-FastAPI  ── verifies JWT (HS256 signature, exp, aud) ──► trusted user id (sub)
+FastAPI  ── verifies JWT (JWKS public key, exp, aud) ──► trusted user id (sub)
    │
    │  per request: SET LOCAL ROLE authenticated
    │               set_config('request.jwt.claims', {sub,role}, local=true)
@@ -30,25 +30,37 @@ RLS. Neither alone is the sole gate.
   token refresh are handled client-side by `@supabase/supabase-js`
   (`web/src/lib/auth.tsx`). The browser never sees a service-role key — only the
   public anon key and the user's own access token.
-- **Verification (API):** `app/services/auth.py` verifies the access token with
-  the project's HS256 **JWT secret** and checks:
+- **Verification (API):** `app/services/auth.py` verifies the access token and
+  checks:
   - signature (rejects forged / tampered tokens),
   - `exp` (rejects expired tokens),
   - `aud` (must be `authenticated`),
   - presence of `sub` (the user's UUID).
+- **Key resolution:** the token's `alg` header picks the path:
+  - **ES256 / RS256 / EdDSA (default for projects created since Oct 2025):** the
+    public key is fetched from `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`,
+    matched by `kid`, and cached for 10 minutes (Supabase's own edge cache
+    window). No secret is stored server-side for this path.
+  - **HS256 (legacy shared secret):** accepted only when `SUPABASE_JWT_SECRET` is
+    set, for older projects that have not moved to signing keys.
+- **Algorithm-confusion guard:** the allowed algorithm comes from the key (the
+  JWK's own `alg`, or HS256 for the configured secret), and the header must
+  match it. `alg: none`, unknown algorithms, and unknown `kid`s are rejected.
 - **Boundary:** `app/api/deps.py::get_current_user` is the single dependency that
-  protects `/reports*`. Missing/invalid/expired → **401**; server not configured
-  with a secret → **503**. Route code only ever runs with a verified user.
+  protects `/reports*`. Missing/invalid/expired → **401**; auth not configured, or
+  the JWKS endpoint unreachable → **503**. Route code only ever runs with a
+  verified user. Verification runs in a worker thread so a JWKS fetch never
+  blocks the event loop.
 
-### Why HS256 shared secret (and not JWKS)
+### Why JWKS (asymmetric) first
 
-Supabase can also sign tokens with asymmetric keys (ES256/RS256) served from a
-JWKS endpoint. This slice deliberately uses the **HS256 shared secret**: it is
-available on every project, needs no network fetch, and keeps the trust boundary
-to a single documented secret. The trade-off is that the secret is symmetric —
-so it must be stored only server-side and rotated via Supabase if leaked.
-Migrating to JWKS/asymmetric verification is a clean future enhancement (swap the
-key resolution in `verify_token`, keep everything else).
+Supabase projects created since October 2025 sign access tokens with an
+asymmetric key by default, so a backend that only knew the HS256 secret would
+reject every real sign-in on a new project. Verifying against the public JWKS
+also means the API holds no signing secret at all: a leaked API config cannot be
+used to mint tokens, and key rotation needs no redeploy (the old and new keys are
+published side by side during rotation). The legacy HS256 path stays for
+backward compatibility and is off unless the secret is set.
 
 ## Authorization
 
@@ -83,10 +95,12 @@ key resolution in `verify_token`, keep everything else).
 
 - Everything sensitive comes from environment variables; `.env` is gitignored and
   `.env.example` documents the keys. Nothing secret is logged.
-- Server: `SUPABASE_JWT_SECRET`, `DATABASE_URL`. Browser: `NEXT_PUBLIC_SUPABASE_URL`,
-  `NEXT_PUBLIC_SUPABASE_ANON_KEY` (both are safe to ship to the client by design).
-- The Supabase **service-role** key is never used by this app and must never be
-  put in the web build.
+- Server: `DATABASE_URL`, `SUPABASE_URL` (not secret), and optionally the legacy
+  `SUPABASE_JWT_SECRET`. Browser: `NEXT_PUBLIC_SUPABASE_URL`,
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable `sb_publishable_…` key or the
+  legacy anon key; both are safe to ship to the client by design).
+- The Supabase **service-role / secret** key (`sb_secret_…`) is never used by
+  this app and must never be put in the web build.
 
 ## CORS
 
@@ -97,7 +111,6 @@ credentials. Set this to the exact deployed web origin in production.
 
 - **Rate limiting** is not yet applied to `POST /reports` (which triggers a full
   pipeline run). Add a per-user limit before public deployment.
-- **JWKS / asymmetric JWT** verification (see trade-off above).
 - **Audit logging** for saved-report mutations is not implemented.
 - **Dependency scanning:** `npm audit` reports pre-existing advisories in the
   Next.js toolchain; triage during Sprint 6 hardening.
@@ -107,7 +120,7 @@ credentials. Set this to the exact deployed web origin in production.
 CI runs fully mocked (no live DB), so RLS isolation is verified manually. With a
 Supabase project and `0001` + `0002` applied:
 
-1. Configure the API (`SUPABASE_JWT_SECRET`, `DATABASE_URL`) and the web app
+1. Configure the API (`SUPABASE_URL`, `DATABASE_URL`) and the web app
    (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
 2. Create **two** users (A and B) via the app or the Supabase dashboard.
 3. As A, save a report; note its `id`.

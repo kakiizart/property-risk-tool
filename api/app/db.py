@@ -6,8 +6,13 @@ up once and is shared across all requests. If DATABASE_URL is not set (early
 sprints or local dev without a database), the pool is left as None and the
 NRI lookup service returns a 503 instead of crashing.
 
-Connection string format (Supabase):
-  postgresql://postgres.<project-ref>:<password>@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+Connection string format (Supabase "Session pooler", recommended):
+  postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+
+The session pooler works over IPv4 (the direct db.<ref>.supabase.co host is
+IPv6-only on the free tier). The transaction pooler (port 6543) also works:
+the pool disables asyncpg's named prepared-statement cache, which transaction
+pooling does not support.
 
 Usage in request handlers:
   pool = get_pool()          # raises RuntimeError if pool not initialised
@@ -54,6 +59,10 @@ async def init_pool(database_url: str) -> None:
         min_size=1,
         max_size=10,
         command_timeout=10,
+        # Supabase's transaction pooler (Supavisor, port 6543) cannot keep
+        # named prepared statements across transactions; disabling asyncpg's
+        # statement cache keeps the pool safe on either pooler mode.
+        statement_cache_size=0,
         init=_init_connection,
     )
     logger.info("Database pool ready")
